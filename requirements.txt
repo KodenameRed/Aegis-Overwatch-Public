@@ -1,0 +1,17 @@
+colorama
+fastapi
+geoip2
+google-genai
+joblib
+mcp
+numpy
+onnxruntime
+openai
+pandas
+protobuf
+psutil
+python-dotenv
+requests
+scapy
+scikit-learn
+uvicorn

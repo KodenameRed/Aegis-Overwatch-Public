@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AEGIS | Threat Archive</title>
+    <style>
+        * { box-sizing: border-box; }
+        :root { 
+            --bg: #010409; 
+            --panel: #0d1117; 
+            --border: #30363d; 
+        }
+        html, body { 
+            margin: 0; padding: 0; width: 100%; height: 100vh; 
+            background: var(--bg); color: #c9d1d9; 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            display: flex; flex-direction: column; 
+        }
+        
+        .header { 
+            padding: 20px 30px; background: var(--panel); 
+            border-bottom: 1px solid var(--border); 
+            display: flex; justify-content: space-between; align-items: center; 
+        }
+        .title { 
+            font-size: 18px; font-weight: 900; color: #8b949e; 
+            letter-spacing: 2px; 
+        }
+        
+        .nav-btn { 
+            background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); 
+            color: #58a6ff; padding: 8px 15px; border-radius: 6px; 
+            font-size: 10px; font-weight: 900; letter-spacing: 1px; 
+            text-decoration: none; transition: 0.2s; 
+        }
+        .nav-btn:hover { background: rgba(88,166,255,0.2); }
+
+        .content { flex: 1; padding: 30px; overflow-y: auto; }
+
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: #8b949e;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .filter-btn.active {
+            background: rgba(88,166,255,0.15);
+            border-color: #58a6ff;
+            color: #58a6ff;
+        }
+        
+        .search-bar { 
+            width: 100%; background: #010409; border: 1px solid var(--border); 
+            color: #c9d1d9; padding: 15px 20px; border-radius: 8px; 
+            font-family: monospace; font-size: 14px; margin-bottom: 25px; 
+            outline: none; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); 
+        }
+        .search-bar:focus { border-color: #58a6ff; }
+
+        .archive-table { 
+            width: 100%; border-collapse: collapse; background: var(--panel); 
+            border-radius: 8px; overflow: hidden; border: 1px solid var(--border); 
+        }
+        .archive-table th { 
+            background: rgba(255,255,255,0.02); padding: 14px 15px; text-align: left; 
+            font-size: 10px; color: #8b949e; text-transform: uppercase; 
+            letter-spacing: 1px; border-bottom: 1px solid var(--border); 
+        }
+        .archive-table td { 
+            padding: 14px 15px; border-bottom: 1px solid #1f2937; 
+            font-size: 12px; vertical-align: top; 
+        }
+        .archive-row { transition: 0.2s; }
+        .archive-row:hover { background: rgba(255,255,255,0.03); }
+        .resolved-row { background: rgba(63, 185, 80, 0.035); }
+        .false-positive-row { background: rgba(255, 171, 64, 0.035); }
+
+        .badge { 
+            padding: 3px 9px; border-radius: 4px; font-size: 9px; 
+            font-weight: bold; font-family: monospace; letter-spacing: 0.5px; 
+            display: inline-block;
+        }
+        .badge-high { background: rgba(255, 75, 43, 0.1); color: #ff4b2b; border: 1px solid rgba(255, 75, 43, 0.3); }
+        .badge-med { background: rgba(255, 171, 64, 0.1); color: #ffab40; border: 1px solid rgba(255, 171, 64, 0.3); }
+        .badge-low { background: rgba(139, 148, 158, 0.1); color: #8b949e; border: 1px solid rgba(139, 148, 158, 0.3); }
+        .badge-resolved { background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid #3fb95040; }
+        .badge-false-positive { background: rgba(255,171,64,0.15); color: #ffab40; border: 1px solid #ffab4040; }
+
+        details summary { cursor: pointer; outline: none; font-weight: 600; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+        /* Visual priority for cold path items */
+        .archive-row[data-has-observation="true"] {
+            border-left: 4px solid #58a6ff;
+            background: rgba(88, 166, 255, 0.035);
+        }
+
+        .archive-row.recurred {
+            border-left: 4px solid #ffab40;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="title">🗄️ HISTORICAL THREAT ARCHIVE</div>
+        <a href="/dashboard" class="nav-btn">◀ RETURN TO DASHBOARD</a>
+    </div>
+
+    <div class="content">
+        <!-- Filters -->
+        <div class="filter-bar">
+            <button class="filter-btn active" onclick="filterByType('all', this)">All Archived</button>
+            <button class="filter-btn" onclick="filterByType('false_positive', this)">False Positives</button>
+            <button class="filter-btn" onclick="filterByType('resolved', this)">Verified / Resolved</button>
+            <button class="filter-btn" onclick="filterByType('observation', this)">👁️ Under Observation</button>
+            <button class="filter-btn" onclick="showObservationTab(this)">Manage Windows</button>
+        </div>
+
+        <input type="text" id="searchInput" class="search-bar" 
+               placeholder="Search hashes, IPs, MITRE, process names, or dossier UIDs..." 
+               onkeyup="filterTable()">
+
+        <table class="archive-table" id="archiveTable">
+            <thead>
+                <tr>
+                    <th style="width: 170px;">Timestamp</th>
+                    <th style="width: 240px;">Target</th>
+                    <th style="width: 90px;">Score</th>
+                    <th>Classification &amp; Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in archive_items %}
+                {% set score = item.score | float if item.score else 0.0 %}
+                {% set is_false_positive = item.false_positive or 'FALSE POSITIVE' in (item.status_label or '') %}
+                {% set is_resolved = item.remediated or 'VERIFIED' in (item.status_label or '') or 'RESOLVED' in (item.status_label or '') or 'ARCHIVED' in (item.status_label or '') %}
+                {% set is_dossier = 'dossier_data' in (item.ai_structured or {}) %}
+
+                <tr class="archive-row {% if is_false_positive %}false-positive-row{% elif is_resolved %}resolved-row{% endif %}" 
+                    data-type="{% if is_false_positive %}false_positive{% elif is_resolved %}resolved{% else %}other{% endif %}"
+                    data-has-observation="{{ 'true' if item.has_active_observation else 'false' }}">
+
+                    <!-- Timestamp -->
+                    <td style="color: #8b949e; font-family: monospace; font-size: 11px; line-height: 1.3;">
+                        {{ item.ui_time }}<br>
+                        <span style="font-size: 9px; opacity: 0.55;">{{ item.date_str if item.date_str else '' }}</span>
+                    </td>
+
+                    <!-- Target -->
+                    <td style="color: #58a6ff; font-weight: bold; word-break: break-all; font-size: 12.5px;">
+                        {{ item.image if item.image else (item.peers[0] if item.peers else 'Unknown Target') }}
+                    </td>
+
+                    <!-- Score -->
+                    <td>
+                        <span class="badge {% if is_false_positive %}badge-false-positive{% elif is_resolved %}badge-resolved{% elif score >= 0.85 %}badge-high{% elif score >= 0.50 %}badge-med{% else %}badge-low{% endif %}">
+                            {{ "%.2f"|format(score) }}
+                        </span>
+                    </td>
+
+                    <!-- Classification -->
+                    <td>
+                        <div style="margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="color: #c9d1d9; font-weight: 700;">
+                                {{ (item.status_label or '') | replace('🚨', '') | replace('🟢', '') | replace('⚠️', '') | trim }}
+                            </span>
+
+                            {% if is_false_positive %}
+                                <span class="badge badge-false-positive" style="font-size: 8.5px; padding: 2px 8px;">
+                                    ⚠️ FALSE POSITIVE (ARCHIVED)
+                                </span>
+                            {% elif is_resolved %}
+                                <span class="badge badge-resolved" style="font-size: 8.5px; padding: 2px 8px;">
+                                    ✅ VERIFIED & RESOLVED
+                                </span>
+                            {% endif %}
+
+                            {% if item.has_active_observation %}
+                                <span class="badge" style="background:rgba(88,166,255,0.15); color:#58a6ff; border:1px solid #58a6ff40; font-size:8.5px; padding:2px 8px;">
+                                    👁️ UNDER OBSERVATION
+                                </span>
+                            {% endif %}
+
+                            {% if item.recurrence_count and item.recurrence_count > 0 %}
+                                <span class="badge" style="background:rgba(255,171,64,0.15); color:#ffab40; border:1px solid #ffab4040; font-size:8.5px; padding:2px 8px;">
+                                    🔁 RECURRED ×{{ item.recurrence_count }}
+                                </span>
+                            {% endif %}
+
+                            {# === NEW: LEGACY RECORD BADGE === #}
+                            {% if item.ai_structured.dossier_data and item.ai_structured.dossier_data.is_empty %}
+                                <span class="badge" style="background:rgba(139,148,158,0.15); color:#8b949e; border:1px solid #8b949e40; font-size:8px; padding:2px 8px;">
+                                    LEGACY RECORD
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <div style="color: #8b949e; font-size: 11px; line-height: 1.55; margin-bottom: 10px;">
+                            {{ item.reason or item.ai_structured.verdict_summary or 'No additional context.' }}
+                        </div>
+
+                        <!-- Observation Status -->
+                        {% if item.has_active_observation %}
+                            <div style="margin-bottom: 10px; padding: 8px 12px; background: rgba(88,166,255,0.07); border: 1px solid #58a6ff40; border-radius: 6px;">
+                                <span style="color:#58a6ff; font-weight:700; font-size:11px;">👁️ UNDER OBSERVATION</span>
+                                {% if item.observation_expiry %}
+                                    <span style="font-size:10px; color:#8b949e; margin-left:8px;">(Expires: {{ item.observation_expiry }})</span>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+
+                        <!-- Kinetic Actions -->
+                        {% if item.kinetic_actions %}
+                        <div style="margin-bottom: 10px;">
+                            <span style="color:#ffab40; font-weight: bold; font-size: 10px;">Actions Executed:</span><br>
+                            {% for action in item.kinetic_actions %}
+                                <span style="background:rgba(255,171,64,0.1); color:#ffab40; padding:1px 6px; border-radius:2px; font-size:9px; margin-right:4px;">
+                                    {{ action }}
+                                </span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Posture Notes (from Cold Path) -->
+                        {% if item.posture_notes %}
+                        <div style="margin-bottom: 10px; padding: 6px 10px; background: rgba(139,148,158,0.06); border-radius: 4px; font-size: 10.5px; color: #8b949e;">
+                            <span style="color:#8b949e; font-weight: 600;">📝 Notes:</span> {{ item.posture_notes | truncate(120) }}
+                        </div>
+                        {% endif %}
+
+                        <!-- Rich Expandable Dossier -->
+                        {% if is_dossier and item.ai_structured.dossier_data %}
+                            {% set dossier = item.ai_structured.dossier_data %}
+                            <details style="margin-top: 4px;">
+                                <summary style="font-size: 10px; color: #d2a8ff; cursor: pointer; font-weight: 600;">
+                                    ▶ View Full Immutable Dossier + Forensics
+                                </summary>
+                                <div style="margin-top: 12px; padding: 16px; background: #010409; border: 1px solid #30363d; border-radius: 6px; font-size: 11px; line-height:1.55;">
+
+                                    {% if dossier.is_empty %}
+                                        <div style="color:#ffab40; font-style:italic; margin-bottom:10px;">
+                                            This is a legacy/ledger-only record. Limited forensic detail available.
+                                        </div>
+                                    {% endif %}
+
+                                    <b style="color:#58a6ff;">Executive Summary</b><br>
+                                    {{ dossier.narrative | default('Narrative not available') }}<br><br>
+
+                                    <b style="color:#3fb950;">Verification Status:</b> {{ item.verification_status or 'Verified via Resolution Ledger' }}<br>
+                                    <b style="color:#ffab40;">MITRE ATT&CK:</b> {{ dossier.mitre_id or 'N/A' }}<br><br>
+
+                                    {% if item.kinetic_actions %}
+                                    <b style="color:#ff4b2b;">Kinetic Actions Taken:</b> {{ item.kinetic_actions | join(', ') }}<br><br>
+                                    {% endif %}
+
+                                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #30363d;">
+                                        <button onclick="exportArchivedDossierReport('{{ item.sig }}', this)" 
+                                                style="background: rgba(210,168,255,0.1); border: 1px solid #d2a8ff40; color: #d2a8ff; 
+                                                    padding: 7px 16px; border-radius: 4px; font-size: 9.5px; font-weight: 800; cursor: pointer;">
+                                            📋 EXPORT FULL AUDIT REPORT
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        {% else %}
+                            <!-- Raw data fallback stays the same -->
+                            <details style="margin-top: 4px;">
+                                ...
+                            </details>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 50px; color: #484f58; font-family: monospace; letter-spacing: 1px;">
+                        NO ARCHIVED RECORDS FOUND
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+                <!-- Under Observation Section (Phase 1) -->
+        <div id="observation-section" style="display: none; margin-top: 30px;">
+            <!-- Header Bar -->
+            <div style="margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; 
+                        background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px 20px;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <div>
+                        <span style="font-weight: 900; color: #58a6ff; font-size: 15px;">👁️ ACTIVE OBSERVATION WINDOWS</span>
+                        <span id="obs-count-badge" 
+                              style="background: rgba(88,166,255,0.15); color: #58a6ff; font-size: 10px; 
+                                     padding: 2px 9px; border-radius: 10px; margin-left: 10px; font-weight: 700;">
+                            0
+                        </span>
+                    </div>
+                    <div style="color: #8b949e; font-size: 12px;">
+                        Post-remediation monitoring • 14-day default window
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button onclick="loadActiveObservations()" 
+                            style="background: rgba(88,166,255,0.1); border: 1px solid #58a6ff40; color: #58a6ff; 
+                                   padding: 7px 16px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                        🔄 REFRESH
+                    </button>
+                    <button onclick="hideObservationTab()" 
+                            style="background: #161b22; border: 1px solid #30363d; color: #8b949e; 
+                                   padding: 7px 16px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                        ← BACK TO ARCHIVE
+                    </button>
+                </div>
+            </div>
+
+            <div id="observation-list" style="background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px;">
+                <!-- Populated dynamically via JavaScript -->
+                <div style="padding: 40px; text-align: center; color: #8b949e; font-size: 12px;">
+                    Loading active observations...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ======================================================================
+        // PHASE 3 HELPERS: Observation Window Utilities
+        // ======================================================================
+        function getObservationStatus(item) {
+            if (!item.observation_expiry) return null;
+            
+            try {
+                const expiry = new Date(item.observation_expiry);
+                const now = new Date();
+                const diffTime = expiry - now;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                if (diffDays > 0) {
+                    return {
+                        active: true,
+                        daysLeft: diffDays,
+                        status: diffDays > 10 ? "healthy" : (diffDays > 5 ? "warning" : "critical"),
+                        label: `${diffDays} days remaining`
+                    };
+                } else {
+                    return {
+                        active: false,
+                        daysLeft: 0,
+                        status: "expired",
+                        label: "Observation ended"
+                    };
+                }
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function renderObservationBarometer(daysLeft) {
+            if (!daysLeft || daysLeft <= 0) return '';
+            
+            const percent = Math.max(15, Math.min(100, Math.round((daysLeft / 14) * 100)));
+            const color = daysLeft > 10 ? '#3fb950' : (daysLeft > 5 ? '#ffab40' : '#ff4b2b');
+            
+            return `
+                <div style="margin-top:6px; height:4px; background:#21262d; border-radius:3px; overflow:hidden; width:100%;">
+                    <div style="width:${percent}%; height:100%; background:${color}; transition:width 0.3s;"></div>
+                </div>
+            `;
+        }
+
+        function filterTable() {
+            let input = document.getElementById("searchInput").value.toUpperCase();
+            let table = document.getElementById("archiveTable");
+            let tr = table.getElementsByTagName("tr");
+
+            for (let i = 1; i < tr.length; i++) {
+                let rowText = tr[i].textContent || tr[i].innerText;
+                tr[i].style.display = rowText.toUpperCase().indexOf(input) > -1 ? "" : "none";
+            }
+        }
+
+        function filterByType(type, btn) {
+            // Deselect all buttons
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            let table = document.getElementById("archiveTable");
+            let rows = table.getElementsByTagName("tr");
+
+            for (let i = 1; i < rows.length; i++) {
+                let row = rows[i];
+                let rowType = row.getAttribute('data-type');
+                if (!rowType) continue;
+
+                // Check if this row has an active observation (uses backend data when available)
+                let hasActiveObservation = false;
+                if (row.hasAttribute('data-has-observation')) {
+                    hasActiveObservation = row.getAttribute('data-has-observation') === 'true';
+                } else {
+                    hasActiveObservation = row.innerHTML.includes('UNDER OBSERVATION') || 
+                                           row.innerHTML.includes('👁️ UNDER OBSERVATION');
+                }
+
+                if (type === 'all') {
+                    row.style.display = "";
+                } 
+                else if (type === 'false_positive' && rowType === 'false_positive') {
+                    row.style.display = "";
+                } 
+                else if (type === 'resolved' && rowType === 'resolved') {
+                    row.style.display = "";
+                } 
+                else if (type === 'observation' && hasActiveObservation) {
+                    row.style.display = "";
+                } 
+                else {
+                    row.style.display = "none";
+                }
+            }
+        }
+
+        function exportArchivedDossierReport(sig, btn) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "⏳ GENERATING REPORT...";
+            btn.style.pointerEvents = "none";
+
+            const container = btn.closest('td') || btn.closest('details')?.parentElement;
+
+            const isFalsePositive = container.innerText.includes('FALSE POSITIVE') || 
+                                    container.innerText.includes('ARCHIVED');
+
+            const hasObservation = container.innerHTML.includes('UNDER OBSERVATION') || 
+                                container.innerText.includes('MONITORING');
+            const hasRecurrence = container.innerText.includes('RECURRED') || 
+                                container.innerText.includes('RECURRENCE');
+
+            let recurrenceInfo = "";
+            const recMatch = container.innerText.match(/RECURRED\s*×?(\d+)/i);
+            if (recMatch) {
+                recurrenceInfo = `Recurrence Count: ${recMatch[1]}`;
+            }
+
+            let postureNotes = "";
+            const notesMatch = container.innerText.match(/Last Note[:\s]*(.+?)(?:\n|$)/i);
+            if (notesMatch && notesMatch[1] && notesMatch[1].trim() !== "No notes yet") {
+                postureNotes = notesMatch[1].trim();
+            }
+
+            const analystName = (typeof window !== 'undefined' && window.AEGIS_CONFIG && window.AEGIS_CONFIG.analystName) 
+                ? window.AEGIS_CONFIG.analystName 
+                : 'SOC Analyst';
+
+            let reportText = `AEGIS OVERWATCH — ARCHIVED THREAT DOSSIER\n`;
+            reportText += `==================================================\n`;
+            reportText += `Incident ID:      ${sig}\n`;
+            reportText += `Report Generated: ${new Date().toLocaleString()}\n`;
+            reportText += `Classification:   ${isFalsePositive ? 'FALSE POSITIVE (BENIGN)' : 'VERIFIED / RESOLVED'}\n`;
+            reportText += `Exported By:      ${analystName}\n\n`;
+
+            const narrative = container.innerText.split('\n')[2] || 'Narrative not available.';
+            reportText += `[EXECUTIVE SUMMARY]\n${narrative}\n\n`;
+
+            reportText += `[VERIFICATION & REMEDIATION STATUS]\n`;
+            if (isFalsePositive) {
+                reportText += `• Status: FALSE POSITIVE\n`;
+                reportText += `• Action: Dossier archived and threat DNA penalized in baselines.\n`;
+            } else {
+                reportText += `• Status: VERIFIED & RESOLVED\n`;
+                reportText += `• Action: Kinetic remediation executed + post-action verification passed.\n`;
+            }
+
+            if (hasObservation || hasRecurrence || postureNotes || recurrenceInfo) {
+                reportText += `\n[POST-REMEDIATION POSTURE]\n`;
+                
+                if (hasObservation) {
+                    reportText += `• Observation Window: Active (14-day tracking via incident_lifecycle)\n`;
+                }
+                if (hasRecurrence || recurrenceInfo) {
+                    reportText += `• Recurrence Detected: Yes\n`;
+                    if (recurrenceInfo) reportText += `  ${recurrenceInfo}\n`;
+                }
+                if (postureNotes) {
+                    reportText += `• Analyst Notes: ${postureNotes}\n`;
+                }
+                reportText += `• Cold Path Tracking: Enabled via incident_lifecycle\n`;
+            }
+
+            const mitre = container.innerText.match(/T\d{4}/);
+            if (mitre) {
+                reportText += `\nMITRE ATT&CK: ${mitre[0]}\n`;
+            }
+
+            // ============================================================
+            // HMAC SIGNING + DYNAMIC CHAIN OF CUSTODY
+            // ============================================================
+            (async () => {
+                let hmacValue = null;
+
+                try {
+                    const res = await fetch('/api/sign_report', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-aegis-signature': 'UI_AUTHORIZED_SESSION' },
+                        body: JSON.stringify({ report_text: reportText })
+                    });
+                    const result = await res.json();
+
+                    if (result.status === "success") {
+                        hmacValue = result.hmac_short || result.hmac;
+                    }
+                } catch (e) {
+                    console.warn("[HMAC] Signing skipped for archived dossier.");
+                }
+
+                // Build final Chain of Custody section with dynamic HMAC
+                reportText += `\n[CHAIN OF CUSTODY]\n`;
+                if (hmacValue) {
+                    reportText += `• Integrity: HMAC-SHA256 Sealed (${hmacValue})\n`;
+                } else {
+                    reportText += `• Integrity: HMAC-SHA256 Sealed\n`;
+                }
+                reportText += `• Primary Source: Aegis Resolution Ledger + incident_snapshots\n`;
+                if (hasObservation || hasRecurrence) {
+                    reportText += `• Additional Source: incident_lifecycle (observation + recurrence)\n`;
+                }
+                reportText += `• Exported By: ${analystName}\n`;
+                reportText += `==================================================\n`;
+
+                // Append HMAC verification line if we have a signature
+                if (hmacValue) {
+                    reportText += `\n• Report HMAC (HMAC-SHA256): ${hmacValue}`;
+                    reportText += `\n• Verification: Use same AEGIS_API_KEY + HMAC-SHA256 on the full report content.`;
+                }
+
+                // Copy to clipboard
+                navigator.clipboard.writeText(reportText).then(() => {
+                    btn.innerHTML = "✅ REPORT COPIED";
+                    btn.style.color = "#3fb950";
+                    btn.style.borderColor = "#3fb95040";
+
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.style.color = "#d2a8ff";
+                        btn.style.borderColor = "#d2a8ff40";
+                        btn.style.pointerEvents = "auto";
+                    }, 2200);
+                }).catch(() => {
+                    const textarea = document.createElement("textarea");
+                    textarea.value = reportText;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+
+                    btn.innerHTML = "✅ COPIED";
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.style.pointerEvents = "auto";
+                    }, 1800);
+                });
+            })();
+        }
+
+        // ======================================================================
+        // PHASE 1: Under Observation Tab JavaScript
+        // ======================================================================
+        function showObservationTab(btn) {
+            // Deselect all filter buttons
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Hide main archive table, show observation section
+            document.getElementById('archiveTable').style.display = 'none';
+            document.getElementById('observation-section').style.display = 'block';
+
+            // Load data from backend
+            loadActiveObservations();
+        }
+
+        async function loadActiveObservations() {
+            const container = document.getElementById('observation-list');
+            container.innerHTML = `<div style="padding: 30px; text-align: center; color: #8b949e;">Loading active observations...</div>`;
+
+            try {
+                const res = await fetch('/api/observation/active');
+                const data = await res.json();
+
+                if (!data || data.length === 0) {
+                    container.innerHTML = `
+                        <div style="padding: 40px; text-align: center; color: #8b949e; font-size: 13px;">
+                            No campaigns currently under active observation.
+                        </div>`;
+                    return;
+                }
+
+                let html = `<table style="width:100%; border-collapse: collapse; font-size: 12px; border: 1px solid #30363d; border-radius: 6px; overflow: hidden;">`;
+                html += `<thead><tr style="background:#161b22; color:#8b949e;">
+                            <th style="padding:12px 14px; text-align:left; border-bottom: 1px solid #30363d;">Campaign ID</th>
+                            <th style="padding:12px 14px; text-align:left; border-bottom: 1px solid #30363d;">State</th>
+                            <th style="padding:12px 14px; text-align:center; border-bottom: 1px solid #30363d;">Days Left</th>
+                            <th style="padding:12px 14px; text-align:center; border-bottom: 1px solid #30363d;">Recurrence</th>
+                            <th style="padding:12px 14px; text-align:left; border-bottom: 1px solid #30363d;">Last Note</th>
+                            <th style="padding:12px 14px; text-align:right; border-bottom: 1px solid #30363d;">Actions</th>
+                         </tr></thead><tbody>`;
+
+                data.forEach(item => {
+                    const daysLeft = item.days_remaining !== null ? item.days_remaining : '—';
+                    const totalDays = 14;
+                    const daysUsed = (daysLeft === '—') ? totalDays : (totalDays - daysLeft);
+                    const progressPercent = Math.min(100, Math.max(0, Math.round((daysUsed / totalDays) * 100)));
+
+                    const hasRecurrence = (item.recurrence_count || 0) > 0;
+                    const stateColor = hasRecurrence ? '#ffab40' : 
+                                       (item.current_state === 'MONITORING' ? '#3fb950' : '#ffab40');
+
+                    const stateLabel = hasRecurrence 
+                        ? `RECURRENCE x${item.recurrence_count}` 
+                        : item.current_state;
+
+                    const notePreview = item.posture_notes 
+                        ? item.posture_notes.split('\n').pop().substring(0, 55) 
+                        : 'No notes yet';
+
+                    html += `<tr style="border-bottom:1px solid #30363d; transition: background 0.1s;" 
+                                 onmouseover="this.style.background='#161b22'" 
+                                 onmouseout="this.style.background='transparent'">
+                        
+                        <td style="padding:12px 14px; font-family:monospace; color:#58a6ff; font-size:11px;">
+                            ${item.campaign_id}
+                        </td>
+                        
+                        <td style="padding:12px 14px;">
+                            <span style="color:${stateColor}; font-weight:700; font-size:11px;">
+                                ${item.current_state}
+                            </span>
+                        </td>
+                        
+                        <td style="padding:12px 14px; text-align:center;">
+                            <div style="display:flex; align-items:center; gap:8px; justify-content:center;">
+                                <span style="font-weight:700; color:#c9d1d9;">${daysLeft}</span>
+                                <div style="width:70px; height:5px; background:#30363d; border-radius:3px; overflow:hidden;">
+                                    <div style="width:${progressPercent}%; height:100%; background:${progressPercent > 80 ? '#ffab40' : '#58a6ff'};"></div>
+                                </div>
+                            </div>
+                            <div style="font-size:9px; color:#8b949e; margin-top:2px;">Day ${daysUsed} / ${totalDays}</div>
+                        </td>
+                        
+                        <td style="padding:12px 14px; text-align:center;">
+                            ${hasRecurrence 
+                                ? `<span style="background:rgba(255,171,64,0.15); color:#ffab40; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700;">
+                                     RECURRED ×${item.recurrence_count}
+                                   </span>` 
+                                : `<span style="color:#8b949e; font-size:11px;">—</span>`
+                            }
+                        </td>
+                        
+                        <td style="padding:12px 14px; font-size:10px; color:#8b949e; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${notePreview}
+                        </td>
+                        
+                        <td style="padding:12px 14px; text-align:right; white-space: nowrap;">
+                            <button onclick="addObservationNote('${item.campaign_id}')" 
+                                    style="background:rgba(139,148,158,0.1); border:1px solid #8b949e40; color:#8b949e; padding:4px 9px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; margin-right:6px;">
+                                + Note
+                            </button>
+                            <button onclick="manageObservation('${item.campaign_id}', 'extend')" 
+                                    style="background:rgba(88,166,255,0.1); border:1px solid #58a6ff40; color:#58a6ff; padding:4px 9px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; margin-right:6px;">
+                                +7d
+                            </button>
+                            <button onclick="manageObservation('${item.campaign_id}', 'close')" 
+                                    style="background:rgba(255,75,43,0.1); border:1px solid #ff4b2b40; color:#ff4b2b; padding:4px 9px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer;">
+                                Close
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+
+                html += `</tbody></table>`;
+                container.innerHTML = html;
+
+            } catch (err) {
+                container.innerHTML = `
+                    <div style="padding: 30px; text-align: center; color: #ffab40;">
+                        Could not load observation data.<br>
+                        <span style="font-size:10px; color:#8b949e;">(Backend endpoint /api/observation/active may need to be added)</span>
+                    </div>`;
+            }
+        }
+
+        async function manageObservation(campaignId, action) {
+            let note = '';
+            let extendDays = 0;
+
+            if (action === 'extend') {
+                extendDays = 7;
+            } 
+            else if (action === 'close') {
+                // Confirmation before closing
+                const confirmed = confirm(
+                    `Are you sure you want to CLOSE this observation window early?\n\n` +
+                    `Campaign: ${campaignId}\n\n` +
+                    `This will stop post-remediation monitoring for this item.`
+                );
+
+                if (!confirmed) {
+                    return; // User cancelled
+                }
+
+                note = prompt('Optional reason for closing early:', '') || 'Closed early by analyst';
+            }
+
+            try {
+                const res = await fetch('/api/observation/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-aegis-signature': 'UI_AUTHORIZED_SESSION' },
+                    body: JSON.stringify({
+                        campaign_id: campaignId,
+                        action: action,
+                        note: note,
+                        extend_days: extendDays
+                    })
+                });
+
+                const result = await res.json();
+
+                if (result.status === 'success') {
+                    alert('Observation updated successfully.');
+                    loadActiveObservations(); // Refresh the list
+                } else {
+                    alert('Error: ' + (result.message || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed to update observation.');
+            }
+        }
+
+        // ======================================================================
+        // PHASE 3: Add Note to Observation Window
+        // ======================================================================
+        async function addObservationNote(campaignId) {
+            const note = prompt("Add a note to this observation window:", "");
+            if (!note || note.trim() === "") return;
+
+            try {
+                const res = await fetch('/api/observation/update', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'x-aegis-signature': 'UI_AUTHORIZED_SESSION' 
+                    },
+                    body: JSON.stringify({
+                        campaign_id: campaignId,
+                        action: "add_note",
+                        note: note.trim()
+                    })
+                });
+
+                const result = await res.json();
+
+                if (result.status === 'success') {
+                    showToast("Note added successfully", "success");
+                    loadActiveObservations(); // Refresh the list
+                } else {
+                    showToast("Failed to add note: " + (result.message || "Unknown error"), "error");
+                }
+            } catch (e) {
+                showToast("Error adding note to observation.", "error");
+            }
+        }
+
+        // Simple toast notification for archive.html
+        function showToast(message, type = "success") {
+            const toast = document.createElement("div");
+            toast.style.cssText = `
+                position: fixed; 
+                bottom: 30px; 
+                right: 30px; 
+                background: #161b22; 
+                border: 1px solid ${type === "success" ? "#3fb950" : "#ff4b2b"}; 
+                color: #c9d1d9; 
+                padding: 12px 20px; 
+                border-radius: 6px; 
+                box-shadow: 0 10px 30px rgba(0,0,0,0.6); 
+                z-index: 99999; 
+                font-size: 13px;
+                max-width: 320px;
+            `;
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.transition = "all 0.3s ease";
+                toast.style.opacity = "0";
+                setTimeout(() => toast.remove(), 300);
+            }, 2800);
+        }
+
+        function hideObservationTab() {
+            document.getElementById('observation-section').style.display = 'none';
+            document.getElementById('archiveTable').style.display = '';
+
+            // Re-activate the "All Archived" button
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector('.filter-btn').classList.add('active');
+        }
+
+        // ======================================================================
+        // Auto-sort: Put items under observation + recurrence at the top
+        // ======================================================================
+        function sortArchiveTable() {
+            const table = document.getElementById("archiveTable");
+            const tbody = table.querySelector("tbody");
+            if (!tbody) return;
+
+            const rows = Array.from(tbody.querySelectorAll("tr.archive-row"));
+
+            rows.forEach(row => {
+                // Apply visual class for recurrence
+                if (row.innerText.match(/RECURRED\s*×?(\d+)/i)) {
+                    row.classList.add("recurred");
+                }
+            });
+
+            rows.sort((a, b) => {
+                const aObs = a.getAttribute("data-has-observation") === "true";
+                const bObs = b.getAttribute("data-has-observation") === "true";
+
+                const aRecur = parseInt(a.innerText.match(/RECURRED\s*×?(\d+)/i)?.[1] || "0");
+                const bRecur = parseInt(b.innerText.match(/RECURRED\s*×?(\d+)/i)?.[1] || "0");
+
+                if (aObs && !bObs) return -1;
+                if (!aObs && bObs) return 1;
+                if (aRecur > 0 && bRecur === 0) return -1;
+                if (aRecur === 0 && bRecur > 0) return 1;
+
+                return 0;
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        // Run sorting shortly after page load
+        window.addEventListener('load', () => {
+            setTimeout(sortArchiveTable, 350);
+        });
+    </script>
+</body>
+</html>

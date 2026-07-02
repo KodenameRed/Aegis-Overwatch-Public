@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AEGIS | War Terminal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        * { box-sizing: border-box; }
+        :root { 
+            --bg: #010409; 
+            --panel: #0d1117; 
+            --border: #21262d; 
+            --accent: #58a6ff;
+        }
+        html, body { 
+            margin: 0; padding: 0; background: var(--bg); color: #c9d1d9; 
+            font-family: 'Inter', -apple-system, sans-serif; font-size: 13px; line-height: 1.55; 
+        }
+        .header-bar { 
+            background: rgba(13,17,23,0.95); border-bottom: 1px solid rgba(255,255,255,0.05); 
+            padding: 16px 40px; display: flex; justify-content: space-between; align-items: center; 
+            position: sticky; top: 0; z-index: 100; 
+        }
+        .container { max-width: 1360px; margin: 24px auto; padding: 0 24px; }
+        
+        .tab-btn { 
+            background: transparent; border: none; color: #8b949e; padding: 14px 28px; 
+            font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; 
+            cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; 
+        }
+        .tab-btn.active { color: #58a6ff; border-bottom: 3px solid #58a6ff; }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .card { 
+            background: #0d1117; margin-bottom: 20px; border-radius: 8px; 
+            border: 1px solid #21262d; overflow: hidden; 
+            box-shadow: 0 6px 20px rgba(0,0,0,0.35); 
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #30363d; }
+        .resolved-card { border-color: #3fb95040; background: #0a120f; }
+        
+        .section-header { 
+            font-size: 11px; color: #8b949e; font-weight: 900; letter-spacing: 1.5px; 
+            text-transform: uppercase; margin-bottom: 10px; 
+        }
+        
+        .soar-btn { 
+            background: transparent; padding: 8px 16px; border-radius: 5px; 
+            font-size: 11px; font-weight: 800; letter-spacing: 0.5px; 
+            border: 1px solid; cursor: pointer; transition: all 0.15s; 
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .soar-btn:hover { filter: brightness(1.15); }
+        
+        .resolved-badge { 
+            background: rgba(63,185,80,0.12); color: #3fb950; border: 1px solid #3fb95040; 
+            padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: 900; 
+        }
+        
+        #searchBar { 
+            width: 100%; background: #010409; border: 1px solid #30363d; color: #c9d1d9; 
+            padding: 14px 18px 14px 48px; border-radius: 8px; font-family: monospace; 
+            font-size: 14px; margin-bottom: 22px; 
+        }
+        
+        .cmd-terminal { 
+            background: #010409; padding: 12px; border-radius: 6px; border: 1px solid #21262d; 
+            font-family: 'Consolas', monospace; font-size: 12px; color: #a5d6ff; 
+            word-break: break-all; white-space: pre-wrap; max-height: 280px; overflow-y: auto; 
+        }
+        
+        .observation-bar {
+            height: 5px; background: #21262d; border-radius: 3px; overflow: hidden; margin-top: 8px;
+        }
+        .observation-bar-fill { height: 100%; background: #58a6ff; transition: width 0.3s ease; }
+        
+        .dossier-summary {
+            padding: 16px 22px; background: #0d1117; border-bottom: 1px solid #21262d;
+            display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+        }
+        
+        .dossier-body { padding: 22px 26px; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header-bar">
+        <div style="display:flex; align-items:center; gap:18px;">
+            <div style="width:44px; height:44px; background:rgba(255,75,43,0.1); border:1px solid #ff4b2b50; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:22px;">⚡</div>
+            <div>
+                <div style="font-weight:900; font-size:20px; color:#F8FAFC; letter-spacing:2px;">WAR TERMINAL</div>
+                <div style="font-size:11px; color:#8b949e;">Aegis Overwatch • DFIR &amp; Response Center</div>
+            </div>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px; background:rgba(63,185,80,0.1); border:1px solid #3fb95050; padding:8px 16px; border-radius:4px; color:#3fb950; font-weight:bold; font-size:10px;">
+                <div style="width:8px; height:8px; background:#3fb950; border-radius:50%; animation:green-pulse 2s infinite;"></div>
+                LIVE SYNC ACTIVE
+            </div>
+            <button onclick="purgeArchive(event)" style="background:rgba(255,75,43,0.1); border:1px solid #ff4b2b50; color:#ff4b2b; padding:9px 16px; border-radius:4px; font-weight:900; font-size:10px;">PURGE ARCHIVE</button>
+            <a href="/dashboard" style="color:#58a6ff; text-decoration:none; border:1px solid #58a6ff50; padding:9px 16px; border-radius:4px; font-weight:900; font-size:10px; background:rgba(88,166,255,0.1);">RETURN TO DASHBOARD</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <input type="text" id="searchBar" onkeyup="filterLedger()" placeholder="Search campaign IDs, IPs, MITRE, or processes...">
+
+        <!-- Tabs -->
+        <div style="display:flex; border-bottom:1px solid #30363d; margin-bottom:18px;">
+            <button class="tab-btn active" onclick="switchTab('tab-dossiers', this)">Active Campaigns ({{ dossier_count }})</button>
+            <button class="tab-btn" onclick="switchTab('tab-alerts', this)">Kinetic Actions ({{ alert_count }})</button>
+            <button class="tab-btn" onclick="switchTab('tab-benign', this)">Resolved &amp; Baseline ({{ benign_count }})</button>
+        </div>
+
+        <!-- ACTIVE CAMPAIGNS -->
+        <div id="tab-dossiers" class="tab-content active">
+            {% if dossier_count > 0 %}
+                {% for item in dossiers %}
+                    {% set dossier = item.ai_struct.get('dossier_data') %}
+                    {% set is_resolved = item.is_triaged or item.false_positive or 'RESOLVED' in item.lbl or 'VERIFIED' in item.lbl or 'FALSE POSITIVE' in item.lbl or 'ARCHIVED' in item.lbl %}
+
+                    <div class="card {% if is_resolved %}resolved-card{% endif %}" style="border-left: 3px solid {% if is_resolved %}#3fb950{% else %}#ffab40{% endif %};">
+                        <details open>
+                            <summary class="dossier-summary">
+                                <div style="display:flex; justify-content:space-between; width:100%; align-items:center; gap:16px;">
+                                    <!-- Left Side: Title + Metadata -->
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                                            <span style="font-weight:900; color:#F8FAFC; font-size:15px;">{{ item.lbl }}</span>
+                                            <span style="color:#58a6ff; font-family:monospace; font-size:12px;">// {{ item.target }}</span>
+                                        </div>
+                                        
+                                        <!-- Campaign Metadata Row -->
+                                        <div style="display:flex; align-items:center; gap:14px; font-size:11px;">
+                                            <span style="color:#8b949e; font-family:monospace;">
+                                                {{ item.date_str }} {{ item.time_str }}
+                                            </span>
+                                            
+                                            {% if item.recurrence_count and item.recurrence_count > 0 %}
+                                            <span style="background:rgba(255,171,64,0.15); color:#ffab40; border:1px solid #ffab4040; padding:1px 7px; border-radius:3px; font-size:10px; font-weight:700;">
+                                                🔁 RECURRED ×{{ item.recurrence_count }}
+                                            </span>
+                                            {% endif %}
+                                            
+                                            {% if item.has_active_observation %}
+                                            <span style="background:rgba(88,166,255,0.15); color:#58a6ff; border:1px solid #58a6ff40; padding:1px 7px; border-radius:3px; font-size:10px; font-weight:700;">
+                                                👁️ UNDER OBSERVATION
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <!-- Right Side: Status + Time -->
+                                    <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                                        {% if is_resolved %}
+                                            <span class="resolved-badge" style="font-size:10px; padding:4px 11px;">✅ VERIFIED &amp; RESOLVED</span>
+                                        {% else %}
+                                            <span style="background:#ffab40; color:black; padding:3px 10px; border-radius:4px; font-size:10px; font-weight:900; letter-spacing:0.5px;">ACTIVE</span>
+                                        {% endif %}
+                                        
+                                        <div style="text-align:right; font-size:11px; color:#8b949e; font-family:monospace; line-height:1.3;">
+                                            {{ item.time_str }}<br>
+                                            <span style="font-size:10px; color:#6e7681;">Local Time</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </summary>
+
+                            <div class="dossier-body">
+                                {% if dossier %}
+                                    <div style="font-size:15.5px; font-weight:700; color:#F8FAFC; margin-bottom:16px; line-height:1.35;">{{ dossier.headline }}</div>
+                                    {% if item.posture_notes %}
+                                    <div style="margin-bottom:16px; padding:10px 14px; background:rgba(139,148,158,0.06); border-radius:4px; font-size:11px; color:#8b949e;">
+                                        <span style="color:#8b949e; font-weight:600;">📝 Post-Remediation Notes:</span><br>
+                                        {{ item.posture_notes | truncate(200) }}
+                                    </div>
+                                    {% endif %}
+
+                                    <!-- AI Remediation Playbook -->
+                                    {% if dossier.recommended_actions %}
+                                    <div style="margin-bottom:16px;">
+                                        <div class="section-header" style="color:#d2a8ff;">AI Remediation Playbook</div>
+                                        <div style="font-size:12px; color:#e6edf3; background:#010409; padding:12px; border-radius:4px; border:1px solid #21262d;">
+                                            {{ dossier.recommended_actions | replace('\n','<br>') | safe }}
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <!-- Lateral Execution Lineages -->
+                                    {% if dossier.lateral_flow %}
+                                    <div style="margin-bottom:16px;">
+                                        <div class="section-header" style="color:#58a6ff;">💻 I. Lateral Execution Lineages</div>
+                                        {% for lat in dossier.lateral_flow %}
+                                        <div style="background:#010409; border:1px solid #21262d; border-left:3px solid {{ lat.color|default('#58a6ff') }}; padding:10px 12px; margin-bottom:8px; border-radius:4px;">
+                                            <div style="color:#58a6ff; font-weight:bold; margin-bottom:6px;">{{ lat.root_proc }}</div>
+                                            {% for art in lat.artifacts %}
+                                            <div style="font-size:11px; color:#a5d6ff; font-family:monospace; margin-bottom:4px; background:rgba(0,0,0,0.3); padding:6px; border:1px solid #21262d;">
+                                                <span style="color:#8b949e;">{{ art.timestamp }}</span> | <span style="color:#d2a8ff; font-weight:bold;">{{ art.action }}</span><br>
+                                                {{ art.command_line }}
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+
+                                    <!-- Network Flow -->
+                                    {% if dossier.network_flow %}
+                                    <div style="margin-bottom:16px;">
+                                        <div class="section-header" style="color:#ffab40;">🌐 II. Network Exfiltration &amp; C2</div>
+                                        {% for net_item in dossier.network_flow %}
+                                        <div style="background:#010409; border:1px solid #21262d; border-left:3px solid {{ net_item.color | default('#ffab40') }}; padding:10px 12px; margin-bottom:8px; border-radius:4px; display:flex; justify-content:space-between;">
+                                            <div>
+                                                <div style="font-family:monospace; color:#8b949e; font-size:10.5px; margin-bottom:4px;">{{ net_item.timestamp }} | <span style="color:{{ net_item.color | default('#ffab40') }}">{{ net_item.tactic | default('C2') }}</span></div>
+                                                <div style="font-family:monospace; font-size:13px; color:#e6edf3;">
+                                                    <span style="color:#8b949e;">LOCAL</span> <span style="color:{{ net_item.color | default('#ffab40') }}; font-size:9px; margin:0 6px;">▶</span> <b style="color:#F8FAFC;">{{ net_item.ip }}:{{ net_item.port | default('443') }}</b>
+                                                </div>
+                                            </div>
+                                            <div style="text-align:right; color:{{ net_item.color | default('#ffab40') }}; font-weight:900; font-size:14px;">
+                                                {{ net_item.vol_str | default(net_item.vol_kb ~ ' KB') }}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+
+                                    <!-- SOAR Response Pipeline -->
+                                    {% if dossier.kinetic_flow %}
+                                    <div style="margin-bottom:16px;">
+                                        <div class="section-header" style="color:#ff4b2b;">⚡ SOAR Response Pipeline</div>
+                                        <div style="font-size:10px; color:#8b949e; margin-bottom:8px;">
+                                            Kinetic actions require explicit authorization. Forensic actions are investigative only.
+                                        </div>
+                                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+                                            {% for soar in dossier.kinetic_flow %}
+                                            <div style="background:#050b14; border:1px solid #1f2937; 
+                                                        border-left:3px solid {% if 'FORENSIC' in soar.type_clean %}#58a6ff{% else %}{{ soar.color }}{% endif %}; 
+                                                        border-radius:6px; padding:12px; display:flex; flex-direction:column; justify-content:space-between;">
+                                                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+                                                    <div style="color:#e6edf3; font-weight:900; font-size:11px;">{{ soar.type_clean }}</div>
+                                                    
+                                                    {% if 'FORENSIC' in soar.type_clean %}
+                                                        <span style="color:#58a6ff; font-size:9px; font-weight:700; background:rgba(88,166,255,0.1); padding:2px 7px; border-radius:3px; border:1px solid rgba(88,166,255,0.3);">
+                                                            INVESTIGATIVE
+                                                        </span>
+                                                    {% elif soar.status == "EXECUTED" %}
+                                                        <span style="color:#3fb950; font-size:8px; font-weight:900; background:rgba(63,185,80,0.1); padding:2px 6px; border-radius:3px; border:1px solid rgba(63,185,80,0.3);">✅ EXECUTED</span>
+                                                    {% else %}
+                                                        <span style="color:{{ soar.color }}; font-size:8px; font-weight:900; background:{{ soar.color }}15; padding:2px 6px; border-radius:3px; border:1px solid {{ soar.color }}30;">{{ soar.risk }} RISK</span>
+                                                    {% endif %}
+                                                </div>
+                                                
+                                                <div style="font-size:10.5px; color:#c9d1d9; margin-bottom:10px;">{{ soar.justification }}</div>
+
+                                                {% if soar.status == "EXECUTED" %}
+                                                    <div style="padding:8px 10px; background:rgba(63,185,80,0.05); border-radius:4px; border:1px dashed rgba(63,185,80,0.3); margin-top:auto;">
+                                                        <span style="color:#3fb950; font-weight:bold; font-size:9px;">✅ SOAR Deployed</span>
+                                                    </div>
+                                                {% elif 'FORENSIC' in soar.type_clean %}
+                                                    <button onclick="runForensicQuery('{{ item.sig }}', this)" 
+                                                            class="soar-btn" 
+                                                            style="border-color:#58a6ff; color:#58a6ff; width:100%; margin-top:auto;">
+                                                        🔍 RUN FORENSIC QUERY
+                                                    </button>
+                                                {% else %}
+                                                    <button onclick="dispatchSOAR(event, this, '{{ soar.type }}', '{{ soar.target }}', '{{ item.sig }}')" 
+                                                            class="soar-btn" 
+                                                            style="border-color:{{ soar.color }}; color:{{ soar.color }}; width:100%; margin-top:auto;">
+                                                        ⚡ AUTHORIZE STRIKE
+                                                    </button>
+                                                {% endif %}
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                            <!-- Footer / Action Bar -->
+                                    <div style="margin-top:20px; padding-top:16px; border-top:1px solid #21262d;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                                            
+                                            <!-- Left: MITRE + Quick Info -->
+                                            <div style="display:flex; align-items:center; gap:12px; font-size:11px; color:#8b949e;">
+                                                <div>
+                                                    MITRE: <span style="color:#c9d1d9; font-family:monospace; background:#010409; padding:3px 8px; border-radius:4px;">{{ dossier.mitre_id | default('N/A') }}</span>
+                                                </div>
+                                            </div>
+
+                                            <!-- Right: Action Buttons -->
+                                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                                
+                                                {% if is_resolved %}
+                                                    <button onclick="verifyChain('{{ item.sig }}')" 
+                                                            class="soar-btn" 
+                                                            style="border-color:#3fb950; color:#3fb950; background:rgba(63,185,80,0.08); font-weight:700;">
+                                                        ✅ VERIFY REMEDIATION
+                                                    </button>
+                                                {% else %}
+                                                    <button onclick="submitDossierFeedback(event, this, '{{ dossier.uid }}', 'FALSE_POSITIVE')" 
+                                                            class="soar-btn" style="border-color:#3fb950; color:#3fb950;">
+                                                        FALSE POSITIVE
+                                                    </button>
+                                                    
+                                                    <button onclick="submitDossierFeedback(event, this, '{{ dossier.uid }}', 'CONFIRMED')" 
+                                                            class="soar-btn" 
+                                                            style="border-color:#ff4b2b; color:#ff4b2b; font-weight:700;">
+                                                        🚨 CONFIRM THREAT
+                                                    </button>
+                                                {% endif %}
+
+                                                <!-- Jira -->
+                                                {% if item.jira_ticket and item.jira_ticket.has_ticket %}
+                                                    <a href="{{ item.jira_ticket.ticket_url }}" target="_blank" 
+                                                       class="soar-btn" style="border-color:#3fb950; color:#3fb950; text-decoration:none; font-weight:600;">
+                                                        🔗 {{ item.jira_ticket.ticket_key }}
+                                                    </a>
+                                                {% else %}
+                                                    <button onclick="createJiraTicket('{{ item.sig }}', this)" 
+                                                            class="soar-btn" style="border-color:#d2a8ff; color:#d2a8ff;">
+                                                        🎫 CREATE JIRA TICKET
+                                                    </button>
+                                                {% endif %}
+
+                                                <button onclick="renderNexusGraph('{{ dossier.uid }}')" 
+                                                        class="soar-btn" style="border-color:#58a6ff; color:#58a6ff;">
+                                                    📊 VISUALIZE
+                                                </button>
+                                                
+                                                <button onclick="copySOCReport('report_{{ item.sig }}')" 
+                                                        class="soar-btn" style="border-color:#d2a8ff; color:#d2a8ff;">
+                                                    📋 COPY REPORT
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Hidden Report Textarea -->
+                                    <textarea id="report_{{ item.sig }}" style="display:none;">
+AEGIS OVERWATCH — INCIDENT DOSSIER (v8.0)
+==================================================
+Incident ID:     {{ item.sig }}
+Timestamp:       {{ item.date_str }} {{ item.time_str }}
+Severity:        {{ item.lbl }}
+Threat Score:    {{ item.score }} / 1.00
+Status:          {% if is_resolved %}RESOLVED{% else %}ACTIVE{% endif %}
+
+[EXECUTIVE BRIEFING]
+{{ item.ai_verdict }}
+
+[THREAT TOPOGRAPHY & NETWORK]
+{% if dossier and dossier.network_flow %}
+{% for net in dossier.network_flow %}
+• {{ net.ip }}:{{ net.port | default('443') }} ({{ net.vol_str | default(net.vol_kb ~ ' KB') }})
+{% if net.asn_info %}  ASN: {{ net.asn_info }}{% endif %}
+{% endfor %}
+{% else %}
+• No significant external network activity detected.
+{% endif %}
+
+[LATERAL EXECUTION LINEAGES]
+{% if dossier and dossier.lateral_flow %}
+{% for lat in dossier.lateral_flow %}
+• {{ lat.root_proc }}
+  {% for art in lat.artifacts %}
+    - [{{ art.timestamp }}] {{ art.action }}: {{ art.command_line }}
+  {% endfor %}
+{% endfor %}
+{% else %}
+• No anomalous lateral execution detected.
+{% endif %}
+
+[AUTONOMOUS SOAR ACTIONS]
+{% if dossier and dossier.kinetic_flow %}
+{% for k in dossier.kinetic_flow %}
+{{ k.step }}. [{{ k.risk }}] {{ k.type_clean }} — {{ k.justification }}
+   Status: {{ k.status | default('PENDING') }}
+{% endfor %}
+{% else %}
+No kinetic actions were executed.
+{% endif %}
+
+[MITRE ATT&CK]
+• Primary Technique: {{ dossier.mitre_id | default('N/A') }}
+
+[CHAIN OF CUSTODY]
+• Exported By:     {{ analyst_name | default('SOC Analyst') }}
+• Integrity:       SHA-256 + HMAC-SHA256
+• Source:          Aegis Resolution Ledger + incident_snapshots
+==================================================</textarea>
+
+                                {% else %}
+                                    <div style="color:#ffab40; padding:10px 0;">Dossier compilation in progress...</div>
+                                {% endif %}
+                            </div>
+                        </details>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div style="padding:70px; text-align:center; color:#8b949e; background:#0d1117; border-radius:8px; border:1px dashed #30363d;">
+                    No active campaigns
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- KINETIC ALERTS -->
+        <div id="tab-alerts" class="tab-content">
+            {% if alert_count > 0 %}
+                <div style="border:1px solid #30363d; border-radius:8px; overflow:hidden; background:#010409;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#0d1117; color:#8b949e; font-size:10.5px; text-transform:uppercase;">
+                                <th style="padding:13px 18px; text-align:left;">Timestamp</th>
+                                <th style="padding:13px 18px; text-align:left;">Target</th>
+                                <th style="padding:13px 18px; width:80px;">Score</th>
+                                <th style="padding:13px 18px; text-align:right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in alerts %}
+                            <tr style="border-bottom:1px solid #21262d;">
+                                <td style="padding:13px 18px; font-family:monospace; color:#8b949e;">{{ item.time_str }}</td>
+                                <td style="padding:13px 18px;">
+                                    {{ item.target }}
+                                    {% if item.has_active_observation %}
+                                        <span style="font-size:10px; color:#58a6ff; margin-left:8px;">👁️</span>
+                                    {% endif %}
+                                    {% if item.recurrence_count and item.recurrence_count > 0 %}
+                                        <span style="font-size:10px; color:#ffab40; margin-left:4px;">🔁×{{ item.recurrence_count }}</span>
+                                    {% endif %}
+                                </td>
+                                <td style="padding:13px 18px; font-weight:900; color:#ffab40;">{{ item.score }}</td>
+                                <td style="padding:13px 18px; text-align:right;">
+                                    {% if 'VERIFIED' in item.lbl or 'RESOLVED' in item.lbl or item.false_positive or 'FALSE POSITIVE' in item.lbl %}
+                                        <span class="resolved-badge">ARCHIVED</span>
+                                    {% elif 'NEUTRALIZED' in item.lbl or 'EXECUTED' in item.lbl %}
+                                        <span class="resolved-badge">NEUTRALIZED</span>
+                                    {% else %}
+                                        <button onclick="dispatchSOAR(event, this, 'TERMINATE_PID_TREE', '{{ item.target }}', '{{ item.sig }}')" 
+                                                class="soar-btn" style="border-color:#ff4b2b; color:#ff4b2b; font-size:10px; padding:5px 10px;">
+                                            ⚡ TERMINATE
+                                        </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div style="padding:60px; text-align:center; color:#8b949e;">No pending kinetic actions</div>
+            {% endif %}
+        </div>
+
+        <!-- RESOLVED & BASELINE -->
+        <div id="tab-benign" class="tab-content">
+            {% if benign_count > 0 %}
+                <div style="border:1px solid #30363d; border-radius:8px; overflow:hidden; background:#010409;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#0d1117; color:#8b949e; font-size:10.5px; text-transform:uppercase;">
+                                <th style="padding:13px 18px; text-align:left;">Timestamp</th>
+                                <th style="padding:13px 18px; text-align:left;">Target</th>
+                                <th style="padding:13px 18px; text-align:left;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in silent %}
+                            <tr style="border-bottom:1px solid #21262d; background:rgba(63,185,80,0.025);">
+                                <td style="padding:13px 18px; font-family:monospace; color:#8b949e;">{{ item.time_str }}</td>
+                                <td style="padding:13px 18px; color:#c9d1d9; font-weight:bold;">
+                                    {{ item.target }}
+                                    {% if item.has_active_observation %}
+                                        <span style="font-size:10px; color:#58a6ff; margin-left:8px;">👁️ Observing</span>
+                                    {% endif %}
+                                    {% if item.recurrence_count and item.recurrence_count > 0 %}
+                                        <span style="font-size:10px; color:#ffab40; margin-left:6px;">🔁×{{ item.recurrence_count }}</span>
+                                    {% endif %}
+                                </td>
+                                <td style="padding:13px 18px;">
+                                {% if item.false_positive or 'FALSE POSITIVE' in item.lbl %}
+                                    <span style="color:#3fb950; font-weight:bold; background:rgba(63,185,80,0.1); padding:2px 8px; border-radius:3px;">FALSE POSITIVE (ARCHIVED)</span>
+                                {% elif 'LEARNED' in item.lbl %}
+                                    <span style="color:#3fb950; font-weight:bold;">CONSTITUTION RULE</span>
+                                {% else %}
+                                    <span style="color:#8b949e;">RESOLVED / BASELINE</span>
+                                {% endif %}
+                            </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div style="padding:60px; text-align:center; color:#8b949e;">No resolved or baseline entries</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Graph Modal -->
+    <div id="graphModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(1,4,9,0.95); backdrop-filter:blur(8px); align-items:center; justify-content:center; z-index:99999;">
+        <div style="width:92%; max-width:1100px; height:80%; background:#0d1117; border:1px solid #30363d; border-radius:8px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <div style="padding:15px 20px; border-bottom:1px solid #21262d; display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02);">
+                <div style="color:#58a6ff; font-weight:900; letter-spacing:1px; font-size:12px;">📊 AEGIS CAUSALITY GRAPH</div>
+                <button onclick="document.getElementById('graphModal').style.display='none'" style="background:transparent; border:1px solid #30363d; color:#c9d1d9; padding:5px 12px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:10px;">CLOSE</button>
+            </div>
+            <div id="graph-container" style="flex:1; position:relative;"></div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btn.classList.add('active');
+        }
+
+        function filterLedger() {
+            const input = document.getElementById('searchBar').value.toUpperCase();
+            const activeTab = document.querySelector('.tab-content.active');
+            activeTab.querySelectorAll('.card, tr').forEach(row => {
+                if (row.tagName === 'TR' && row.parentNode.tagName === 'THEAD') return;
+                row.style.display = row.innerText.toUpperCase().includes(input) ? '' : 'none';
+            });
+        }
+
+        function purgeArchive(e) {
+            if (!confirm("Permanently delete all history?")) return;
+            fetch('/wipe').then(() => location.reload());
+        }
+
+        function runForensicQuery(sig, btn) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "⏳ Running Query...";
+            btn.disabled = true;
+
+            fetch('/api/run_forensic_query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-aegis-signature': 'UI_AUTHORIZED_SESSION' },
+                body: JSON.stringify({ signature: sig })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "success") {
+                    btn.innerHTML = "✅ Context Retrieved";
+                    btn.style.borderColor = "#3fb950";
+                    btn.style.color = "#3fb950";
+                    
+                    // Optional: Show a quick toast with key info
+                    showToast("Forensic context loaded. Check console for details.", "success");
+                    console.log("[FORENSIC QUERY RESULT]", data.data);
+                } else {
+                    btn.innerHTML = "⚠️ Query Failed";
+                    btn.style.borderColor = "#ffab40";
+                    btn.style.color = "#ffab40";
+                }
+            })
+            .catch(() => {
+                btn.innerHTML = "❌ Error";
+                btn.style.borderColor = "#ff4b2b";
+                btn.style.color = "#ff4b2b";
+            });
+        }
+
+        function dispatchSOAR(e, btn, action, target, sig) {
+            e.preventDefault();
+            if (!confirm(`Execute ${action} on ${target}?`)) return;
+            btn.innerHTML = "Deploying...";
+            fetch('/api/execute_kinetic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-aegis-signature': 'UI_AUTHORIZED_SESSION' },
+                body: JSON.stringify({ action_type: action, target: target, alert_sig: sig })
+            }).then(() => setTimeout(() => location.reload(), 900));
+        }
+
+        function submitDossierFeedback(e, btn, chainId, status) {
+            e.preventDefault();
+            btn.innerHTML = "Submitting...";
+            fetch('/api/dossier_feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-aegis-signature': 'UI_AUTHORIZED_SESSION' },
+                body: JSON.stringify({ chain_id: chainId, status: status })
+            }).then(() => setTimeout(() => location.reload(), 700));
+        }
+
+        async function verifyChain(chainId) {
+            if (!confirm("Run targeted JIT Forensic Probe?")) return;
+            const btn = event.target;
+            btn.innerHTML = "⏳ VERIFYING...";
+            try {
+                const res = await fetch(`/api/verify_chain/${chainId}`, {
+                    headers: { 'x-aegis-signature': 'UI_AUTHORIZED_SESSION' }
+                });
+                const result = await res.json();
+                alert(result.message || result.status);
+                location.reload();
+            } catch (err) {
+                alert("Verification failed");
+                btn.innerHTML = "✅ VERIFY REMEDIATION";
+            }
+        }
+
+       async function copySOCReport(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            let reportText = el.value;
+
+            try {
+                const res = await fetch('/api/sign_report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-aegis-signature': 'UI_AUTHORIZED_SESSION' },
+                    body: JSON.stringify({ report_text: reportText })
+                });
+                const result = await res.json();
+
+                if (result.status === "success") {
+                    // Use short HMAC for readability in the report
+                    const hmac = result.hmac_short || result.hmac;
+                    if (hmac) {
+                        reportText += `\n\n• Report HMAC (HMAC-SHA256): ${hmac}`;
+                        reportText += `\n• Verification: Use same AEGIS_API_KEY + HMAC-SHA256 on the full report content.`;
+                    }
+                }
+            } catch (e) {
+                console.warn("[HMAC] Signing skipped (endpoint unavailable).");
+            }
+
+            navigator.clipboard.writeText(reportText).then(() => {
+                alert("✅ SOC Report copied with HMAC signature");
+            }).catch(() => {
+                // Fallback for older browsers
+                const textarea = document.createElement("textarea");
+                textarea.value = reportText;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert("✅ SOC Report copied (HMAC may be missing)");
+            });
+        }
+
+        async function renderNexusGraph(chainId) {
+            const modal = document.getElementById('graphModal');
+            modal.style.display = 'flex';
+            const container = document.getElementById('graph-container');
+            container.innerHTML = `<div style="color:#58a6ff; text-align:center; padding:40px;">⏳ Generating causality graph...</div>`;
+
+            try {
+                const res = await fetch(`/api/export_dot/${chainId}`);
+                const graphData = await res.json();
+
+                if (graphData.type === "visjs" && graphData.data) {
+                    container.innerHTML = '';
+                    const options = {
+                        nodes: { shape: 'dot', size: 18, font: { color: '#c9d1d9', size: 12 } },
+                        edges: { width: 2, arrows: { to: { enabled: true } } },
+                        physics: { solver: 'forceAtlas2Based' }
+                    };
+                    new vis.Network(container, graphData.data, options);
+                } else {
+                    container.innerHTML = `<div style="color:#ffab40; padding:40px; text-align:center;">No graph data available.</div>`;
+                }
+            } catch (e) {
+                container.innerHTML = `<div style="color:#ff4b2b; padding:40px;">Graph generation failed.</div>`;
+            }
+        }
+        
+        async function createJiraTicket(chainId, btn) {
+            if (btn.disabled) return;
+
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "⏳ Creating Jira Ticket...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/create_jira_ticket', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'x-aegis-signature': 'UI_AUTHORIZED_SESSION' 
+                    },
+                    body: JSON.stringify({
+                        chain_id: chainId,
+                        summary: `Aegis Alert - ${chainId}`,
+                        description: `Ticket auto-created from Aegis Overwatch War Terminal.\n\nChain ID: ${chainId}`
+                    })
+                });
+
+                const result = await res.json();
+
+                if (result.status === "success") {
+                    btn.innerHTML = "✅ Ticket Created";
+                    btn.style.borderColor = "#3fb950";
+                    btn.style.color = "#3fb950";
+
+                    // Create and show ticket link inline
+                    const linkContainer = document.createElement("div");
+                    linkContainer.style.cssText = "margin-top: 8px; font-size: 12px;";
+                    linkContainer.innerHTML = `
+                        <a href="${result.ticket_url}" target="_blank" 
+                           style="color:#58a6ff; text-decoration: underline; font-weight: 600;">
+                            🔗 Open Jira Ticket: ${result.ticket_key}
+                        </a>
+                        ${result.test_mode ? 
+                            '<span style="color:#ffab40; margin-left:8px; font-size:10px;">(Test Mode)</span>' : ''}
+                    `;
+
+                    // Insert the link below the button
+                    btn.parentNode.appendChild(linkContainer);
+
+                    // Optional: Auto-reload after a few seconds so the ledger is fully updated
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2200);
+
+                } else {
+                    alert("Failed to create Jira ticket: " + (result.message || "Unknown error"));
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Error creating Jira ticket. Check console for details.");
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // ======================================================================
+        // Auto-sort: Put items under observation + recurrence at the top
+        // ======================================================================
+        function sortHistoryDossiers() {
+            const container = document.getElementById("tab-dossiers");
+            if (!container) return;
+
+            const cards = Array.from(container.querySelectorAll(".card"));
+
+            cards.sort((a, b) => {
+                const aHasObs = a.innerText.includes("👁️ OBSERVING");
+                const bHasObs = b.innerText.includes("👁️ OBSERVING");
+
+                const aRecur = (a.innerText.match(/RECURRED\s*×?(\d+)/i) || [0, 0])[1];
+                const bRecur = (b.innerText.match(/RECURRED\s*×?(\d+)/i) || [0, 0])[1];
+
+                // Priority: Active Observation > Has Recurrence > Normal
+                if (aHasObs && !bHasObs) return -1;
+                if (!aHasObs && bHasObs) return 1;
+                if (parseInt(aRecur) > 0 && parseInt(bRecur) === 0) return -1;
+                if (parseInt(aRecur) === 0 && parseInt(bRecur) > 0) return 1;
+
+                return 0;
+            });
+
+            cards.forEach(card => container.appendChild(card));
+        }
+
+        // Run sorting shortly after page load
+        window.addEventListener('load', () => {
+            setTimeout(sortHistoryDossiers, 400);
+        });
+    </script>
+</body>
+</html>
